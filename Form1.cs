@@ -1,10 +1,8 @@
-﻿using System;
+﻿using Newtonsoft.Json.Linq;
+using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
-using System.Linq;
-using System.Text;
+using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -12,17 +10,8 @@ namespace conversor_Moeda
 {
     public partial class Form1 : Form
     {
-        Dictionary<string, double> taxaCambio = new Dictionary<string, double>()
-        {
-            {"USD_TO_EUR", 0.89}, //Dolar para euro
-            {"USD_TO_BRL", 5.25}, //Dolar para real
-            {"BRL_TO_EUR", 0.16}, //Real para euro
-            {"BRL_TO_USD", 1/5.25 }, //Real para Dolar
-            {"EUR_TO_USD", 1/0.89 }, //Euro para Dolar
-            {"EUR_TO_BRL", 1/0.18 }, //Euro para Real
-            {"EQUALS", 1} //Quando os dois valores selecionados são iguais (USD To USD, EUR to EUR e BRL to BRL)
 
-        };
+        private static readonly HttpClient client = new HttpClient(); //Para o uso da API
         public Form1()
         {
             InitializeComponent();
@@ -36,62 +25,57 @@ namespace conversor_Moeda
                 MessageBox.Show("Por favor coloque um valor para converter");
             } else
             {
-                converterMoeda();
+                converterMoedaFormaApi();
             }
         }
 
-        private void converterMoeda()
+        private async void converterMoedaFormaApi()
         {
-            //vai ler o valor inserido
             try
             {
-                double valorInserido = Convert.ToDouble(textValorMoeda.Text);
+                string moedaOrigem = comboMoedaOrigem.SelectedItem.ToString();
+                string moedaDestino = comboMoedaDestino.SelectedItem.ToString();
 
-                //pega os tipos selecionados
-                string moedaOrigemSelecionada = comboMoedaOrigem.SelectedItem.ToString();
-                string moedaDestinoSelecionada = comboMoedaDestino.SelectedItem.ToString();
-
-
-
-                //Definindo a chave
-
-                string chave = $"{moedaOrigemSelecionada}_TO_{moedaDestinoSelecionada}";
-                if (moedaDestinoSelecionada == moedaOrigemSelecionada)
+                if(moedaDestino.Equals(String.Empty) || moedaOrigem.Equals(String.Empty))
                 {
-                    chave = "EQUALS";
-                }
-
-                if(valorInserido < 0) //Verifica se o valor inserido é menor que zero ( se for vai executar o message box)
+                    MessageBox.Show("Porfavor selecione uma das opções disponíveis");
+                } else
                 {
-                    MessageBox.Show("Porfavor coloque um valor que seja maior que zero");
+                    decimal valorInserido = Convert.ToDecimal(textValorMoeda.Text);
+
+                    decimal taxaCambio = await pegarTaxaCambio(moedaOrigem, moedaDestino);
+
+                    decimal conversao = valorInserido * taxaCambio;
+
+                    String resultado = $"{conversao:f2}";
+                    atualizarResultado(resultado);
                 }
-                else //Caso o contrario, ele vai executar a parte da chave
-                {
-                    if (taxaCambio.ContainsKey(chave))
-                    {
-                        double taxa = taxaCambio[chave];
-                        double convercao = valorInserido * taxa;
-
-                        String resultado = convercao.ToString("F2");
-
-                        atualizarResultado(resultado);
-
-                    }
-                    else
-                    {
-                        MessageBox.Show("Porfavor selecione os itens que estão vazios");
-                    }
-                }
+                
             }
-
-               
-            catch (FormatException exception)
+            catch (Exception ex)
             {
-                MessageBox.Show("Formato Inválido para fazer a converção");
             }
-
-
         }
+
+        private async Task<decimal> pegarTaxaCambio(string moedaOrigem, string moedaDestino)
+        {
+            
+            string apiKey = "3f507a66ee043bde4a781ba5"; //Chave da API para poder efetuar a conversão
+            string apiUrl = $"https://v6.exchangerate-api.com/v6/{apiKey}/pair/{moedaOrigem}/{moedaDestino}";
+
+            HttpResponseMessage responseMessage = await client.GetAsync(apiUrl);
+            responseMessage.EnsureSuccessStatusCode(); //Fazer que seja executada com sucesso
+
+           string responseBody = await responseMessage.Content.ReadAsStringAsync();
+
+            //Parse do JSON 
+            JObject data = JObject.Parse(responseBody);
+
+            decimal taxaCambio = (decimal)data["conversion_rate"];
+            return taxaCambio;
+        }
+
+       
 
         private void atualizarResultado(String texto)
         {
